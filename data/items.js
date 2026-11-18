@@ -49,10 +49,12 @@ window.OOT_ITEM_SECTIONS = [
       { id: "wallet", abbr: "Wal", levels: ["Adult Wallet", "Giant Wallet", "Tycoon Wallet"], from: ["Progressive Wallet", "Adult Wallet", "Giant Wallet", "Tycoon Wallet"] },
       { id: "magic", abbr: "MP", levels: ["Magic", "Double Magic"], from: ["Progressive Magic Meter", "Magic Meter", "Enhanced Magic Meter"] },
       { id: "double_defense", abbr: "DD", levels: ["Double Defense"], from: ["Double Defense"] },
+      { id: "heart_containers", abbr: "HC", max: 17, label: "Heart Containers", from: ["Heart Container"] },
+      { id: "heart_pieces", abbr: "PoH", max: 36, label: "Pieces of Heart", from: ["Piece of Heart", "Piece of Heart (Treasure Chest Minigame)"] },
       { id: "agony", abbr: "Agny", levels: ["Shard of Agony"], from: ["Shard of Agony"] },
       { id: "gerudo_card", abbr: "Card", levels: ["Gerudo Token"], from: ["Gerudo Token"] },
+      { id: "weird_egg", abbr: "Egg", levels: ["Weird Egg"], from: ["Weird Egg"] },
       { id: "zelda_letter", abbr: "Ltr", levels: ["Zelda's Letter"], from: ["Zelda's Letter"] },
-      { id: "adult_trade", abbr: "Trade", levels: ["Pocket Egg", "Pocket Cucco", "Cojiro", "Odd Mushroom", "Odd Poultice", "Poacher's Saw", "Broken Goron's Sword", "Prescription", "Eyeball Frog", "World's Finest Eyedrops", "Claim Check"], fromExact: true, from: ["Pocket Egg", "Pocket Cucco", "Cojiro", "Odd Mushroom", "Odd Poultice", "Poacher's Saw", "Broken Goron's Sword", "Prescription", "Eyeball Frog", "World's Finest Eyedrops", "Claim Check"] },
       { id: "gs", abbr: "GS", max: 100, label: "Gold Skulltulas", from: ["Gold Skulltula Token"] },
       { id: "triforce", abbr: "Tri", max: 100, label: "Triforce Pieces", from: ["Triforce Piece"], hideWhenZero: true },
     ],
@@ -89,6 +91,22 @@ window.OOT_ITEM_SECTIONS = [
     ],
   },
   {
+    title: "Adult Trade Sequence",
+    collapsed: true,
+    items: [
+      { id: "trade_egg", abbr: "Egg", levels: ["Pocket Egg"], from: ["Pocket Egg"] },
+      { id: "trade_cojiro", abbr: "Cjro", levels: ["Cojiro"], from: ["Cojiro"] },
+      { id: "trade_mushroom", abbr: "Shrm", levels: ["Odd Mushroom"], from: ["Odd Mushroom"] },
+      { id: "trade_poultice", abbr: "Pltc", levels: ["Odd Poultice"], from: ["Odd Poultice"] },
+      { id: "trade_saw", abbr: "Saw", levels: ["Poacher's Saw"], from: ["Poacher's Saw"] },
+      { id: "trade_broken", abbr: "Brkn", levels: ["Broken Goron's Sword"], from: ["Broken Goron's Sword"] },
+      { id: "trade_prescription", abbr: "Rx", levels: ["Prescription"], from: ["Prescription"] },
+      { id: "trade_frog", abbr: "Frog", levels: ["Eyeball Frog"], from: ["Eyeball Frog"] },
+      { id: "trade_eyedrops", abbr: "Drops", levels: ["World's Finest Eyedrops"], from: ["World's Finest Eyedrops"] },
+      { id: "trade_claim", abbr: "Claim", levels: ["Claim Check"], from: ["Claim Check"] },
+    ],
+  },
+  {
     title: "Ocarina Buttons (if shuffled)",
     collapsed: true,
     items: [
@@ -116,6 +134,7 @@ window.OOT_DUNGEONS = [
   { id: "ic", name: "Ice Cavern", spoilerName: "Ice Cavern", keys: [0, 0], bk: false, mc: true, boss: false },
   { id: "gtg", name: "Gerudo Training Grounds", spoilerName: "Gerudo Training Grounds", keys: [9, 3], bk: false, mc: false, boss: false },
   { id: "gc_d", name: "Ganon's Castle", spoilerName: "Ganon's Castle", keys: [2, 3], bk: true, mc: false, boss: false },
+  { id: "gf", name: "Gerudo Fortress", keys: [4, 4], bk: false, mc: false, boss: false, noMQ: true },
 ];
 
 // Spoiler-log item-name prefixes for dungeon items, keyed by dungeon id.
@@ -130,8 +149,9 @@ window.OOT_DUNGEON_ITEM_PREFIX = {
   sht: ["Shadow Temple"],
   botw: ["Bottom of the Well"],
   ic: ["Ice Cavern"],
-  gtg: ["Gerudo Training Grounds"],
+  gtg: ["Gerudo Training Grounds", "Training Grounds"],
   gc_d: ["Ganon's Castle"],
+  gf: ["Gerudo Fortress"],
 };
 
 // Dungeon reward choices (what the boss of a dungeon gives), for the reward selector.

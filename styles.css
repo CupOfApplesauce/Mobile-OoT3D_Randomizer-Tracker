@@ -217,6 +217,24 @@ details.card[open] > summary { margin-bottom: 10px; }
 .tag.mq { background: color-mix(in srgb, var(--mq) 30%, transparent); color: var(--text); }
 .link-btn { background: none; border: 0; color: var(--accent); padding: 8px 0 0; font-size: 13px; }
 
+/* logic */
+.logic-summary { margin: 10px 0 0; font-size: 13px; color: var(--muted); display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.logic-summary .sep { margin: 0 6px; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
+.dot.in { background: var(--good); }
+.dot.out { background: var(--danger); opacity: .7; }
+.chips-row { margin-top: 8px; margin-bottom: 4px; }
+.chip.in-logic-chip { border-color: var(--good); background: color-mix(in srgb, var(--good) 22%, var(--surface-2)); }
+.avail {
+  font-size: 12px; font-weight: 800; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px;
+  display: inline-grid; place-items: center; background: var(--good); color: #0c1a10;
+}
+.card.area.no-logic .aname { color: var(--muted); }
+.loc.in-logic .box { border-color: var(--good); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--good) 25%, transparent); }
+.loc.in-logic .lname { color: var(--text); font-weight: 600; }
+.loc.out-logic .lname { color: var(--muted); }
+.loc.out-logic .box { border-color: color-mix(in srgb, var(--danger) 55%, var(--border)); opacity: .7; }
+
 /* ---------- spoiler ---------- */
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0 0 12px; }
 .kv dt { color: var(--muted); }
@@ -254,6 +272,13 @@ details.card[open] > summary { margin-bottom: 10px; }
 .row-btns { display: flex; flex-wrap: wrap; gap: 8px; }
 .row-btns .btn.primary { width: auto; flex: 1 1 100%; }
 .toggles .btn { margin-top: 10px; }
+.select-row span { flex: 1; }
+.select {
+  background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
+  padding: 7px 8px; font-size: 15px; max-width: 55%;
+}
+details.sub { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
+details.sub > summary { cursor: pointer; font-weight: 600; font-size: 14px; color: var(--muted); padding: 4px 0; }
 .about p { color: var(--muted); font-size: 13px; }
 
 /* ---------- toast ---------- */

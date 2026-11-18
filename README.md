@@ -9,14 +9,28 @@ The tracker is an installable web app (PWA). You open it in your phone's browser
 - **Dungeons**: MQ toggle, dungeon reward, small keys (the max changes with MQ), boss key, map and compass.
 - **Checks**: all 866 locations from the randomizer, grouped into 34 areas, with progress bars, search and "hide checked". You can turn location types on or off: Skulltulas, scrubs, shops, cows, freestanding rupees and hearts.
 - **Spoiler log**: load the `*-spoilerlog.xml` file that the randomizer writes. Then it:
-  - shows only the locations that exist in your seed
+  - shows the location types your seed shuffles (Skulltulas, scrubs, shops, …)
   - sets Master Quest dungeons automatically
   - lets you peek at one location (👁) or reveal everything
   - can add items to your inventory automatically when you check a location
   - offers "where is…" search, Way of the Hero, Gossip Stone hints, the playthrough and the seed's settings
+- **Logic**: every check shows whether it's reachable with the items you've marked, using the randomizer's own logic (see below). Areas show a green count of checks available right now, and the **In logic** filter shows only those. Loading a spoiler log sets the world settings, tricks, Master Quest dungeons, Ganon's trials and starting items. Without a log, you can set them by hand under Settings → Logic.
 - Progress is saved on the device. You can export and import it as JSON.
 
-**Not done yet:** logic, meaning showing which checks you can reach with your current items. This is the next big step (see the roadmap).
+## How the logic works
+
+The tracker doesn't use a hand-written approximation. It runs the randomizer's actual glitchless logic:
+
+- `tools/transpile_logic.py` machine-translates the randomizer's region graph (`source/location_access/*.cpp`, about 11,000 lines of C++ rules) into JavaScript (`data/world.js`).
+- `tools/transpile_enemies.py` does the same for the vanilla enemy placements and the "can you beat this enemy" rules.
+- `js/logic.js` is a hand port of `logic.cpp` (item helpers like `CanUse`, `HasExplosives`, …) and of the randomizer's reachability search, including day/night and child/adult propagation.
+
+It's checked against the real thing. The randomizer's generator, compiled natively, produced exactly the same reachable locations as the tracker for 950 random inventories across many settings. That covered all Master Quest and mixed MQ dungeons, closed world, keysanity, and shop/token/scrub shuffle. Real spoiler logs can also be fully completed by following the tracker. Details are in [`tests/README.md`](tests/README.md).
+
+What it models:
+- **Tracked items only.** The tracker can't see what you've bought from shops, but when shops aren't shuffled it assumes you can buy what's on the shelf, as the randomizer does.
+- Glitchless logic only (glitched logic isn't supported).
+- Not supported yet: entrance randomizer, enemy randomizer, shuffled enemy souls, randomized Gold Skulltula positions.
 
 ## Running it
 
@@ -39,25 +53,30 @@ python3 -m http.server 8000
 | `index.html`, `styles.css` | App shell and styling (dark and light themes) |
 | `js/app.js` | Tracker UI and state |
 | `js/spoiler.js` | Spoiler log XML parser |
-| `data/locations.js` | **Generated** list of every location: name, area, type, vanilla/MQ |
+| `js/logic.js` | Logic engine (port of the randomizer's `logic.cpp` and reachability search) |
+| `data/locations.js` | **Generated** list of every location: name, area, type, vanilla/MQ, vanilla shop items |
+| `data/world.js` | **Generated** region graph, translated from the randomizer's C++ logic |
+| `data/enemies.js` | **Generated** vanilla enemy placements and per-enemy rules |
+| `data/settings.js` | **Generated** settings, tricks and logic variables |
 | `data/items.js` | Item tracker, dungeon and reward definitions |
-| `tools/extract_locations.py` | Regenerates `data/locations.js` from the randomizer source |
+| `tools/` | Generators for the files above (`tools/update_data.sh` runs them all) |
+| `tests/` | Logic tests, including a comparison against the natively built randomizer |
 | `sw.js`, `manifest.webmanifest`, `icons/` | Offline support and install metadata |
 
-### Updating locations when the randomizer changes
-Location names have to match the spoiler log exactly, so they're pulled from the randomizer's own source:
+### Updating when the randomizer changes
+Locations, settings and logic are all generated from the randomizer's own source, so they match your spoiler log:
 
 ```sh
 git clone --depth 1 https://github.com/gamestabled/OoT3D_Randomizer.git /tmp/oot3dr
-python3 tools/extract_locations.py /tmp/oot3dr/source/item_location.cpp > data/locations.js
+tools/update_data.sh /tmp/oot3dr
 ```
 
 When you ship changes, bump `CACHE` in `sw.js` so installed copies update.
 
 ## Roadmap
-1. **Logic**: port the randomizer's access rules (`source/location_access/*.cpp`) so checks show as in logic or out of logic.
+1. ~~Logic~~ ✔ (glitchless, verified against the randomizer)
 2. Item icons, using original artwork rather than ripped game sprites.
-3. Entrance randomizer tracking.
+3. Entrance randomizer, enemy souls and randomized Gold Skulltula positions in logic.
 4. Live updating from the 3DS (far off).
 
 *Unofficial fan project, not affiliated with Nintendo or the randomizer developers.*

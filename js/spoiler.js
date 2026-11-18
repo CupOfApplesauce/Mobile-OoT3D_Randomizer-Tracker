@@ -24,12 +24,28 @@
       throw new Error("This doesn't look like an OoT3D Randomizer spoiler log (expected <spoiler-log>).");
     }
 
+    // Settings in document order: a few names repeat (e.g. "Stone Count" for the bridge and for LACS),
+    // so the logic engine needs the order to tell them apart.
     const settings = {};
+    const settingsList = [];
     const settingsEl = root.getElementsByTagName("settings")[0];
     if (settingsEl) {
       for (const s of settingsEl.getElementsByTagName("setting")) {
         settings[s.getAttribute("name")] = text(s);
+        settingsList.push([s.getAttribute("name"), text(s)]);
       }
+    }
+
+    const tricks = [];
+    const tricksEl = root.getElementsByTagName("enabled-tricks")[0];
+    if (tricksEl) {
+      for (const t of tricksEl.getElementsByTagName("trick")) tricks.push(t.getAttribute("name"));
+    }
+
+    const songNotes = [];
+    const songsEl = root.getElementsByTagName("song-notes")[0];
+    if (songsEl) {
+      for (const s of songsEl.getElementsByTagName("song")) songNotes.push([s.getAttribute("name"), text(s)]);
     }
 
     const startingInventory = [];
@@ -84,6 +100,9 @@
       seed: root.getAttribute("seed") || "",
       hash: root.getAttribute("hash") || "",
       settings,
+      settingsList,
+      tricks,
+      songNotes,
       startingInventory,
       mqDungeons,
       trials,

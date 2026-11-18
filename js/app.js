@@ -33,9 +33,13 @@
     hideChecked: false,
     autoCollect: true,
     showAllSpoilers: false,
-    limitToSeed: true,
+    limitToSeed: false, // hide locations the spoiler log doesn't list (it omits some unshuffled ones)
     collected: {}, // location name -> {item id or dungeon key} applied by auto-collect, so un-checking can undo it
     spoiler: null,
+    // Logic: randomizer setting indices (by setting variable), enabled tricks, required trials.
+    logic: { settings: {}, tricks: {}, trials: [], songButtons: {} },
+    showLogic: true,
+    logicOnly: false,
   });
 
   let state = load();
@@ -50,7 +54,10 @@
       if (raw) {
         const parsed = JSON.parse(raw);
         const base = DEFAULT_STATE();
-        return Object.assign(base, parsed, { filters: Object.assign(base.filters, parsed.filters || {}) });
+        return Object.assign(base, parsed, {
+          filters: Object.assign(base.filters, parsed.filters || {}),
+          logic: Object.assign(base.logic, parsed.logic || {}),
+        });
       }
     } catch (e) {
       /* storage unavailable: run in-memory */
@@ -174,6 +181,48 @@
     return entry ? entry.item : null;
   }
 
+  // ---------- logic ----------
+  // Runs the randomizer's logic (js/logic.js) on the tracked state. Memoized: it only reruns when
+  // something that affects logic changes.
+  let logicCache = { key: null, result: null };
+  function logicConfig() {
+    const mq = {};
+    for (const d of DUNGEONS) if (dungeonState(d.id).mq) mq[d.id] = true;
+    const prices = {};
+    const placed = {};
+    if (state.spoiler) {
+      for (const [name, v] of Object.entries(state.spoiler.locations)) {
+        if (v.price != null) prices[name] = v.price;
+        if (/ Shop Item | Bazaar Item /.test(name) || name.startsWith("Kak Potion Shop") || name.startsWith("MK Potion Shop")) placed[name] = v.item;
+      }
+    }
+    return {
+      items: state.items,
+      dungeons: state.dungeons,
+      settings: state.logic.settings,
+      tricks: state.logic.tricks,
+      trials: state.logic.trials,
+      songButtons: state.logic.songButtons,
+      mq,
+      prices,
+      placed,
+    };
+  }
+  function getLogic() {
+    if (!window.OOTLogic || !state.showLogic) return null;
+    const config = logicConfig();
+    const key = JSON.stringify(config);
+    if (logicCache.key !== key) {
+      try {
+        logicCache = { key, result: window.OOTLogic.compute(config) };
+      } catch (e) {
+        console.error("Logic error", e);
+        logicCache = { key, result: null };
+      }
+    }
+    return logicCache.result;
+  }
+
   // ---------- auto-collect ----------
   function matchItem(itemName) {
     // Dungeon items
@@ -189,28 +238,30 @@
       }
     }
     for (const item of ALL_ITEMS) {
-      if (item.fromExact) {
-        const idx = item.from.indexOf(itemName);
-        if (idx >= 0) return { item: item.id, setTo: idx + 1 };
-        continue;
-      }
       if (item.from && item.from.includes(itemName)) return { item: item.id };
       if (item.fromPrefix && itemName.startsWith(item.fromPrefix) && itemName !== "Bottle with Ruto's Letter") return { item: item.id };
     }
     return null;
   }
 
+  // Item at a location that the spoiler log doesn't list (unshuffled): its vanilla item, if we know it.
+  const LOC_BY_NAME = Object.fromEntries(LOCATIONS.map((l) => [l.n, l]));
+  function vanillaItem(locName) {
+    const loc = LOC_BY_NAME[locName];
+    if (!loc) return null;
+    if (loc.t === "gs") return "Gold Skulltula Token";
+    return loc.vi || null;
+  }
+
   function applyCollect(locName) {
     if (!state.autoCollect || !state.spoiler) return;
-    const itemName = spoilerItem(locName);
+    const itemName = spoilerItem(locName) || vanillaItem(locName);
     if (!itemName) return;
     const m = matchItem(itemName);
     if (!m) return;
     if (m.item) {
       const before = getItem(m.item);
-      if (m.setTo != null) setItem(m.item, Math.max(before, m.setTo));
-      else setItem(m.item, before + 1);
-      if (itemName === "Bottle with Ruto's Letter") setItem("bottles", getItem("bottles") + 1);
+      setItem(m.item, before + 1);
       state.collected[locName] = { item: m.item, before };
     } else {
       const d = DUNGEON_BY_ID[m.dungeon];
@@ -228,9 +279,7 @@
     if (!c) return;
     if (c.item) {
       const item = ITEM_BY_ID[c.item];
-      if (item.fromExact) setItem(c.item, c.before);
-      else setItem(c.item, getItem(c.item) - 1);
-      if (spoilerItem(locName) === "Bottle with Ruto's Letter") setItem("bottles", getItem("bottles") - 1);
+      setItem(c.item, getItem(c.item) - 1);
     } else {
       const ds = dungeonState(c.dungeon);
       if (c.field === "keys") ds.keys = c.ring ? c.before : Math.max(0, ds.keys - 1);
@@ -309,14 +358,16 @@
 
       const chips = h("div", { class: "chips" });
 
-      const mq = h("button", { class: "chip " + (ds.mq ? "on mq" : ""), title: "Master Quest" }, "MQ");
-      mq.addEventListener("click", () => {
-        ds.mq = !ds.mq;
-        ds.keys = Math.min(ds.keys, dungeonKeyMax(d));
-        save();
-        renderItems();
-      });
-      chips.append(mq);
+      if (!d.noMQ) {
+        const mq = h("button", { class: "chip " + (ds.mq ? "on mq" : ""), title: "Master Quest" }, "MQ");
+        mq.addEventListener("click", () => {
+          ds.mq = !ds.mq;
+          ds.keys = Math.min(ds.keys, dungeonKeyMax(d));
+          save();
+          renderItems();
+        });
+        chips.append(mq);
+      }
 
       if (d.boss) {
         const idx = Math.max(0, REWARDS.findIndex((r) => r.id === ds.reward));
@@ -374,14 +425,20 @@
     const scrollY = window.scrollY;
     root.replaceChildren();
 
+    const logic = getLogic();
+    const inLogic = (loc) => (logic ? logic.reachable.has(loc.n) : true);
+    const available = (loc) => !state.checked[loc.n] && inLogic(loc);
+
     let total = 0;
     let done = 0;
+    let availableCount = 0;
     const byArea = {};
     for (const loc of LOCATIONS) {
       if (!locationVisible(loc)) continue;
       (byArea[loc.a] = byArea[loc.a] || []).push(loc);
       total++;
       if (state.checked[loc.n]) done++;
+      else if (logic && inLogic(loc)) availableCount++;
     }
 
     const pct = total ? Math.round((done / total) * 100) : 0;
@@ -392,6 +449,12 @@
           h("span", null, `${pct}%`)
         ),
         h("div", { class: "bar" }, h("div", { class: "fill", style: `width:${pct}%` })),
+        logic
+          ? h("p", { class: "logic-summary" },
+            h("span", { class: "dot in" }), ` ${availableCount} available in logic`,
+            h("span", { class: "sep" }, "·"),
+            h("span", { class: "dot out" }), ` ${total - done - availableCount} out of logic`)
+          : null,
         seedLimited() ? h("p", { class: "hint" }, "Showing only locations in your loaded seed.") : null
       )
     );
@@ -408,27 +471,40 @@
       s.setSelectionRange(s.value.length, s.value.length);
     });
 
-    const hideBtn = h("button", { class: "chip " + (state.hideChecked ? "on" : "") }, state.hideChecked ? "Showing remaining" : "Hide checked");
+    const hideBtn = h("button", { class: "chip " + (state.hideChecked ? "on" : "") }, "Hide checked");
     hideBtn.addEventListener("click", () => {
       state.hideChecked = !state.hideChecked;
       save();
       renderChecks();
     });
-    root.append(h("div", { class: "toolbar" }, search, hideBtn));
+    const logicBtn = logic ? h("button", { class: "chip " + (state.logicOnly ? "on in-logic-chip" : "") }, "In logic") : null;
+    if (logicBtn) {
+      logicBtn.addEventListener("click", () => {
+        state.logicOnly = !state.logicOnly;
+        save();
+        renderChecks();
+      });
+    }
+    root.append(h("div", { class: "toolbar" }, search), h("div", { class: "toolbar chips-row" }, logicBtn, hideBtn));
 
     const q = checksQuery.trim().toLowerCase();
     let sectionLabel = null;
+    let shownAreas = 0;
     for (const area of AREAS) {
       const locs = byArea[area.id];
       if (!locs) continue;
       const areaDone = locs.filter((l) => state.checked[l.n]).length;
+      const areaAvail = logic ? locs.filter(available).length : 0;
       const shown = locs.filter((l) =>
         (!state.hideChecked || !state.checked[l.n]) &&
+        (!state.logicOnly || !logic || available(l)) &&
         (!q || l.n.toLowerCase().includes(q) || area.name.toLowerCase().includes(q) ||
           (state.showAllSpoilers && (spoilerItem(l.n) || "").toLowerCase().includes(q)))
       );
       if (q && shown.length === 0) continue;
       if (state.hideChecked && areaDone === locs.length && !q) continue;
+      if (state.logicOnly && logic && areaAvail === 0) continue;
+      shownAreas++;
 
       const label = area.dungeon ? "Dungeons" : "Overworld";
       if (label !== sectionLabel) {
@@ -442,6 +518,7 @@
       const header = h("button", { class: "area-head" + (complete ? " complete" : ""), "aria-expanded": String(open) },
         h("span", { class: "caret" }, open ? "▾" : "▸"),
         h("span", { class: "aname" }, area.name, mqTag),
+        areaAvail ? h("span", { class: "avail", title: "Available in logic" }, String(areaAvail)) : null,
         h("span", { class: "acount" }, `${areaDone}/${locs.length}`)
       );
       header.addEventListener("click", () => {
@@ -450,13 +527,14 @@
         renderChecks();
       });
 
-      const card = h("div", { class: "card area" + (complete ? " complete" : "") }, header,
+      const cls = "card area" + (complete ? " complete" : "") + (logic && !complete && !areaAvail ? " no-logic" : "");
+      const card = h("div", { class: cls }, header,
         h("div", { class: "bar thin" }, h("div", { class: "fill", style: `width:${(areaDone / locs.length) * 100}%` }))
       );
 
       if (open) {
         const ul = h("ul", { class: "loc-list" });
-        for (const loc of shown) ul.append(locationRow(loc, area));
+        for (const loc of shown) ul.append(locationRow(loc, area, logic ? inLogic(loc) : null));
         card.append(ul);
         const allBtn = h("button", { class: "link-btn" }, complete ? "Uncheck all" : "Check all in " + area.name);
         allBtn.addEventListener("click", () => {
@@ -472,6 +550,8 @@
 
     if (total === 0) {
       root.append(h("p", { class: "empty" }, "No checks match your filters. Turn some location types on in Settings."));
+    } else if (shownAreas === 0 && state.logicOnly) {
+      root.append(h("p", { class: "empty" }, "Nothing left in logic. Add the items you've found on the Items tab."));
     }
     window.scrollTo(0, scrollY);
   }
@@ -484,13 +564,14 @@
     return loc.n;
   }
 
-  function locationRow(loc, area) {
+  function locationRow(loc, area, inLogic) {
     const checked = !!state.checked[loc.n];
     const item = spoilerItem(loc.n);
     const revealed = item && (state.showAllSpoilers || state.peeked[loc.n] || checked);
     const price = state.spoiler && state.spoiler.locations[loc.n] && state.spoiler.locations[loc.n].price;
 
-    const li = h("li", { class: "loc" + (checked ? " checked" : "") });
+    const logicCls = inLogic == null || checked ? "" : inLogic ? " in-logic" : " out-logic";
+    const li = h("li", { class: "loc" + (checked ? " checked" : "") + logicCls, "data-loc": loc.n });
     const main = h("button", { class: "loc-main", "aria-pressed": String(checked) },
       h("span", { class: "box" }, checked ? "✓" : ""),
       h("span", { class: "loc-text" },
@@ -645,15 +726,67 @@
     const present = new Set();
     for (const loc of LOCATIONS) if (loc.n in parsed.locations) present.add(loc.t);
     for (const t of Object.keys(state.filters)) state.filters[t] = present.has(t);
+    // Logic settings, tricks, trials and song notes.
+    if (window.OOTLogic) {
+      const { settings, tricks } = window.OOTLogic.settingsFromSpoiler(parsed.settingsList || [], parsed.tricks || []);
+      state.logic = {
+        settings,
+        tricks,
+        trials: parsed.trials || [],
+        songButtons: window.OOTLogic.songButtonsFromSpoiler(parsed.songNotes || []),
+      };
+    }
+    applyStartingInventory(parsed.startingInventory || []);
     // Dungeon rewards are known from the spoiler, but only fill them if the player wants spoilers.
     save();
     renderAll();
+  }
+
+  // Starting items from the spoiler log (<starting-inventory>): "Hookshot" = "Longshot" -> level 2, etc.
+  const STARTING_ITEMS = {
+    "Slingshot": "slingshot", "Ocarina": "ocarina", "Bombs": "bombs", "Bombchus": "bombchus", "Boomerang": "boomerang",
+    "Hookshot": "hookshot", "Bow": "bow", "Fire Arrow": "fire_arrows", "Ice Arrow": "ice_arrows",
+    "Light Arrow": "light_arrows", "Megaton Hammer": "hammer", "Iron Boots": "iron_boots", "Hover Boots": "hover_boots",
+    "Lens of Truth": "lens", "Din's Fire": "dins", "Farore's Wind": "farores", "Nayru's Love": "nayrus",
+    "Magic Beans": "beans", "Ruto's Letter": "ruto", "Kokiri Sword": "kokiri_sword", "Master Sword": "master_sword",
+    "Biggoron Sword": "biggoron", "Deku Shield": "deku_shield", "Hylian Shield": "hylian_shield",
+    "Mirror Shield": "mirror_shield", "Goron Tunic": "goron_tunic", "Zora Tunic": "zora_tunic",
+    "Strength Upgrade": "strength", "Scale Upgrade": "scale", "Wallet Upgrade": "wallet", "Shard of Agony": "agony",
+    "Magic Meter": "magic", "Double Defense": "double_defense", "Zelda's Lullaby": "lullaby", "Epona's Song": "eponas",
+    "Saria's Song": "sarias", "Sun's Song": "suns", "Song of Time": "sot", "Song of Storms": "storms",
+    "Minuet of Forest": "minuet", "Bolero of Fire": "bolero", "Serenade of Water": "serenade",
+    "Requiem of Spirit": "requiem", "Nocturne of Shadow": "nocturne", "Prelude of Light": "prelude",
+    "Kokiri's Emerald": "emerald", "Goron's Ruby": "ruby", "Zora's Sapphire": "sapphire",
+    "Light Medallion": "light_med", "Forest Medallion": "forest_med", "Fire Medallion": "fire_med",
+    "Water Medallion": "water_med", "Spirit Medallion": "spirit_med", "Shadow Medallion": "shadow_med",
+    "Ocarina Button L": "oca_l", "Ocarina Button R": "oca_r", "Ocarina Button X": "oca_x", "Ocarina Button Y": "oca_y",
+    "Ocarina Button A": "oca_a",
+  };
+  function applyStartingInventory(list) {
+    const S = window.OOT_SETTINGS || {};
+    const optionsByName = {};
+    for (const [v, def] of Object.entries(S)) if (v.startsWith("Starting") && def.options) optionsByName[def.name] = def.options;
+    let bottles = 0;
+    for (const { name, value } of list) {
+      if (/^Bottle \d$/.test(name)) {
+        if (value !== "None" && value !== "Off") bottles++;
+        continue;
+      }
+      const id = STARTING_ITEMS[name];
+      if (!id || value === "Off") continue;
+      const opts = optionsByName[name];
+      const level = opts ? Math.max(1, opts.indexOf(value)) : 1;
+      if (getItem(id) < level) setItem(id, level);
+    }
+    if (bottles > getItem("bottles")) setItem("bottles", bottles);
   }
 
   // ---------- Settings view ----------
   function renderSettings() {
     const root = $("#view-settings");
     root.replaceChildren();
+
+    root.append(renderLogicSettings());
 
     const filterList = h("div", { class: "toggles" });
     for (const [t, label] of Object.entries(TYPE_LABELS)) {
@@ -710,10 +843,13 @@
     const resetBtn = h("button", { class: "btn danger" }, "Reset tracker");
     resetBtn.addEventListener("click", () => {
       if (!confirm("Clear all items and checks? (Your loaded spoiler log and settings are kept.)")) return;
-      const keep = { spoiler: state.spoiler, filters: state.filters, autoCollect: state.autoCollect, limitToSeed: state.limitToSeed, showAllSpoilers: state.showAllSpoilers };
+      const startList = state.spoiler ? state.spoiler.startingInventory || [] : [];
+      const keep = { spoiler: state.spoiler, filters: state.filters, autoCollect: state.autoCollect, limitToSeed: state.limitToSeed,
+        showAllSpoilers: state.showAllSpoilers, logic: state.logic, showLogic: state.showLogic };
       const mq = Object.fromEntries(DUNGEONS.map((d) => [d.id, dungeonState(d.id).mq]));
       state = Object.assign(DEFAULT_STATE(), keep);
       for (const [id, v] of Object.entries(mq)) dungeonState(id).mq = v;
+      applyStartingInventory(startList);
       save();
       renderAll();
       toast("Tracker reset");
@@ -726,6 +862,82 @@
     root.append(h("div", { class: "card about" }, h("h2", null, "About"),
       h("p", null, "An unofficial, fan-made tracker for gamestabled's Ocarina of Time 3D Randomizer. Location names come straight from the randomizer's source so they match your spoiler log."),
       h("p", null, `${LOCATIONS.length} locations · ${AREAS.length} areas`)));
+  }
+
+  // Randomizer settings that change logic. Loading a spoiler log fills these in.
+  const LOGIC_SETTING_ROWS = [
+    "OpenForest", "OpenKakariko", "OpenDoorOfTime", "ZorasFountain", "GerudoFortress", "Bridge", "GanonsBossKey",
+    "StartingAge", "Keysanity", "BossKeysanity", "ShuffleAdultTradeQuest", "BombchusInLogic", "AmmoDrops",
+    "ShuffleOcarinaButtons", "StartingHearts", "DamageMultiplier",
+  ];
+  const BRIDGE_COUNTS = { 2: "BridgeStoneCount", 3: "BridgeMedallionCount", 4: "BridgeRewardCount", 5: "BridgeDungeonCount", 6: "BridgeTokenCount", 7: "BridgeHeartCount" };
+  const LACS_COUNTS = { "LACS-Stones": "LACSStoneCount", "LACS-Medallions": "LACSMedallionCount", "LACS-Rewards": "LACSRewardCount",
+    "LACS-Dungeons": "LACSDungeonCount", "LACS-Tokens": "LACSTokenCount", "LACS-Hearts": "LACSHeartCount" };
+  const TRIALS = ["Forest", "Fire", "Water", "Spirit", "Shadow", "Light"];
+
+  function settingValue(v) {
+    const S = window.OOTLogic.SETTINGS;
+    return v in state.logic.settings ? state.logic.settings[v] : S[v].default;
+  }
+
+  function selectRow(v, labelOverride) {
+    const def = window.OOTLogic.SETTINGS[v];
+    if (!def || !def.options) return null;
+    const select = h("select", { class: "select", "aria-label": def.name });
+    def.options.forEach((opt, i) => {
+      const o = h("option", { value: String(i) }, opt);
+      if (i === settingValue(v)) o.selected = true;
+      select.append(o);
+    });
+    select.addEventListener("change", () => {
+      state.logic.settings[v] = Number(select.value);
+      save();
+      renderSettings();
+    });
+    return h("label", { class: "toggle select-row" }, h("span", null, labelOverride || def.name), select);
+  }
+
+  function renderLogicSettings() {
+    const S = window.OOTLogic && window.OOTLogic.SETTINGS;
+    const card = h("div", { class: "card" }, h("h2", null, "Logic"));
+    card.append(h("div", { class: "toggles" },
+      toggleRow("Show which checks are in logic", state.showLogic, (v) => (state.showLogic = v))));
+    if (!S || !state.showLogic) return card;
+
+    card.append(h("p", { class: "hint" }, state.spoiler
+      ? "These were read from your spoiler log. Change them only if something looks off."
+      : "Set these to match your seed (or load its spoiler log to fill them in)."));
+    const rows = h("div", { class: "toggles" });
+    for (const v of LOGIC_SETTING_ROWS) {
+      rows.append(selectRow(v));
+      if (v === "Bridge" && BRIDGE_COUNTS[settingValue("Bridge")]) rows.append(selectRow(BRIDGE_COUNTS[settingValue("Bridge")], "↳ Bridge requirement"));
+      if (v === "GanonsBossKey") {
+        const lacs = LACS_COUNTS[S.GanonsBossKey.options[settingValue("GanonsBossKey")]];
+        if (lacs) rows.append(selectRow(lacs, "↳ Light Arrow Cutscene requirement"));
+      }
+    }
+    card.append(rows);
+
+    const trials = h("div", { class: "toggles" });
+    for (const t of TRIALS) {
+      const name = `The ${t} Trial`;
+      trials.append(toggleRow(`${t} Trial`, state.logic.trials.includes(name), (on) => {
+        state.logic.trials = state.logic.trials.filter((x) => x !== name);
+        if (on) state.logic.trials.push(name);
+      }));
+    }
+    card.append(h("details", { class: "sub" }, h("summary", null, `Required Ganon's Castle trials (${state.logic.trials.length})`), trials));
+
+    const tricks = h("div", { class: "toggles" });
+    for (const t of window.OOTLogic.TRICKS) {
+      tricks.append(toggleRow(t.name, !!state.logic.tricks[t.var], (on) => {
+        if (on) state.logic.tricks[t.var] = true;
+        else delete state.logic.tricks[t.var];
+      }));
+    }
+    const enabled = Object.keys(state.logic.tricks).length;
+    card.append(h("details", { class: "sub" }, h("summary", null, `Logic tricks (${enabled} enabled)`), tricks));
+    return card;
   }
 
   function toggleRow(label, value, onChange) {
