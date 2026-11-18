@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#14231b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="OoT3D Tracker">
+  <title>OoT3D Rando Tracker</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="title">
+      <span class="logo" aria-hidden="true">◎</span>
+      <span>OoT3D Tracker</span>
+    </div>
+    <div class="seed-chip" id="seedChip" hidden></div>
+  </header>
+
+  <main>
+    <section id="view-items" class="view active" aria-label="Items"></section>
+    <section id="view-checks" class="view" aria-label="Checks"></section>
+    <section id="view-spoiler" class="view" aria-label="Spoiler"></section>
+    <section id="view-settings" class="view" aria-label="Settings"></section>
+  </main>
+
+  <nav class="tabbar" role="tablist">
+    <button role="tab" data-view="items" class="active"><span class="ti">◆</span>Items</button>
+    <button role="tab" data-view="checks"><span class="ti">✓</span>Checks</button>
+    <button role="tab" data-view="spoiler"><span class="ti">✦</span>Spoiler</button>
+    <button role="tab" data-view="settings"><span class="ti">⚙</span>Settings</button>
+  </nav>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="data/locations.js"></script>
+  <script src="data/items.js"></script>
+  <script src="data/settings.js"></script>
+  <script src="data/enemies.js"></script>
+  <script src="data/world.js"></script>
+  <script src="js/logic.js"></script>
+  <script src="js/spoiler.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
