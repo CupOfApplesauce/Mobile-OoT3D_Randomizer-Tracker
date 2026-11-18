@@ -786,6 +786,7 @@
     const root = $("#view-settings");
     root.replaceChildren();
 
+    root.append(renderPresets());
     root.append(renderLogicSettings());
 
     const filterList = h("div", { class: "toggles" });
@@ -897,6 +898,185 @@
     return h("label", { class: "toggle select-row" }, h("span", null, labelOverride || def.name), select);
   }
 
+  // ---------- presets ----------
+  // Named snapshots of the seed settings (logic settings, tricks, location types). Kept apart from the
+  // run itself, so resetting the tracker or loading a spoiler log never deletes them.
+  const PRESET_KEY = "oot3d-tracker-presets-v1";
+  let presets = loadPresets();
+  let selectedPreset = presets.length ? presets[0].name : "";
+
+  function loadPresets() {
+    try {
+      const raw = localStorage.getItem(PRESET_KEY);
+      const list = raw ? JSON.parse(raw) : [];
+      return Array.isArray(list) ? list.filter((p) => p && typeof p.name === "string") : [];
+    } catch (e) {
+      return [];
+    }
+  }
+  function savePresets() {
+    try {
+      localStorage.setItem(PRESET_KEY, JSON.stringify(presets));
+    } catch (e) {
+      toast("Couldn't save presets on this device");
+    }
+  }
+  function presetSnapshot(name) {
+    return {
+      name,
+      settings: Object.assign({}, state.logic.settings),
+      tricks: Object.assign({}, state.logic.tricks),
+      filters: Object.assign({}, state.filters),
+      savedAt: new Date().toISOString(),
+    };
+  }
+  const sameSetup = (a, b) =>
+    JSON.stringify([a.settings, a.tricks, a.filters]) === JSON.stringify([b.settings, b.tricks, b.filters]);
+  function normalized(obj) {
+    // sort keys so equal setups compare equal regardless of insertion order
+    return Object.fromEntries(Object.entries(obj || {}).sort(([x], [y]) => (x < y ? -1 : 1)));
+  }
+  function applyPreset(p) {
+    state.logic.settings = Object.assign({}, p.settings);
+    state.logic.tricks = Object.assign({}, p.tricks);
+    if (p.filters) state.filters = Object.assign({}, state.filters, p.filters);
+  }
+  function upsertPreset(p) {
+    const i = presets.findIndex((x) => x.name === p.name);
+    if (i >= 0) presets[i] = p;
+    else presets.push(p);
+    presets.sort((a, b) => a.name.localeCompare(b.name));
+    selectedPreset = p.name;
+    savePresets();
+  }
+
+  // Share links carry a preset in the URL fragment (never sent to a server): #preset=<base64 JSON>
+  function presetLink(p) {
+    const json = JSON.stringify({ name: p.name, settings: p.settings, tricks: p.tricks, filters: p.filters });
+    const b64 = btoa(unescape(encodeURIComponent(json))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    return location.origin + location.pathname + "#preset=" + b64;
+  }
+  function importPresetFromUrl() {
+    const m = location.hash.match(/^#preset=([A-Za-z0-9_-]+)$/);
+    if (!m) return;
+    history.replaceState(null, "", location.pathname + location.search);
+    try {
+      const b64 = m[1].replace(/-/g, "+").replace(/_/g, "/");
+      const p = JSON.parse(decodeURIComponent(escape(atob(b64))));
+      if (!p || typeof p.settings !== "object") throw new Error("bad preset");
+      let name = prompt("Save the shared preset as:", p.name || "Shared preset");
+      if (!name) return;
+      name = name.trim().slice(0, 60);
+      if (presets.some((x) => x.name === name) && !confirm(`Replace your preset "${name}"?`)) return;
+      upsertPreset({ name, settings: p.settings || {}, tricks: p.tricks || {}, filters: p.filters || {}, savedAt: new Date().toISOString() });
+      if (confirm(`Saved "${name}". Use it now?`)) {
+        applyPreset(presets.find((x) => x.name === name));
+        save();
+      }
+      toast(`Preset "${name}" saved`);
+    } catch (e) {
+      toast("That preset link looks broken");
+    }
+  }
+
+  function renderPresets() {
+    const card = h("div", { class: "card" }, h("h2", null, "Presets"));
+    card.append(h("p", { class: "hint" },
+      "Save your seed settings (logic, tricks and location types) under a name, then load them for your next run."));
+
+    const current = presetSnapshot("");
+    const sel = presets.find((p) => p.name === selectedPreset);
+
+    if (presets.length) {
+      const select = h("select", { class: "select wide", "aria-label": "Preset" });
+      for (const p of presets) {
+        const o = h("option", { value: p.name }, p.name);
+        if (p.name === selectedPreset) o.selected = true;
+        select.append(o);
+      }
+      select.addEventListener("change", () => {
+        selectedPreset = select.value;
+        renderSettings();
+      });
+      card.append(select);
+      if (sel) {
+        const matches = sameSetup(
+          { settings: normalized(sel.settings), tricks: normalized(sel.tricks), filters: normalized(sel.filters) },
+          { settings: normalized(current.settings), tricks: normalized(current.tricks), filters: normalized(current.filters) });
+        card.append(h("p", { class: "preset-status " + (matches ? "ok" : "") },
+          matches ? "✓ Current settings match this preset" : "Current settings differ from this preset"));
+      }
+    } else {
+      card.append(h("p", { class: "empty small" }, "No presets yet. Set up the Logic section below, then save it here."));
+    }
+
+    const btn = (label, cls, fn) => {
+      const b = h("button", { class: "btn " + (cls || "") }, label);
+      b.addEventListener("click", fn);
+      return b;
+    };
+    const row = h("div", { class: "row-btns" });
+    if (sel) {
+      row.append(btn("Load", "primary", () => {
+        applyPreset(sel);
+        save();
+        renderAll();
+        toast(`Loaded "${sel.name}"`);
+      }));
+      row.append(btn("New run with this preset", "", () => {
+        if (!confirm(`Start a new run with "${sel.name}"? This clears your items, checks and spoiler log.`)) return;
+        const keep = { autoCollect: state.autoCollect, showAllSpoilers: state.showAllSpoilers, showLogic: state.showLogic,
+          limitToSeed: state.limitToSeed, filters: state.filters };
+        state = Object.assign(DEFAULT_STATE(), keep);
+        applyPreset(sel);
+        save();
+        renderAll();
+        showView("items");
+        toast(`New run: ${sel.name}`);
+      }));
+    }
+    row.append(btn("Save as new…", "", () => {
+      let name = prompt("Name this preset (e.g. \"Weekly league\" or \"Closed forest + MQ\"):", "");
+      if (!name) return;
+      name = name.trim().slice(0, 60);
+      if (!name) return;
+      if (presets.some((p) => p.name === name) && !confirm(`Replace the existing preset "${name}"?`)) return;
+      upsertPreset(presetSnapshot(name));
+      renderSettings();
+      toast(`Saved "${name}"`);
+    }));
+    if (sel) {
+      row.append(btn("Update", "", () => {
+        if (!confirm(`Overwrite "${sel.name}" with the current settings?`)) return;
+        upsertPreset(presetSnapshot(sel.name));
+        renderSettings();
+        toast(`Updated "${sel.name}"`);
+      }));
+      row.append(btn("Share link", "", async () => {
+        const link = presetLink(sel);
+        try {
+          if (navigator.share) await navigator.share({ title: `OoT3D preset: ${sel.name}`, url: link });
+          else {
+            await navigator.clipboard.writeText(link);
+            toast("Link copied");
+          }
+        } catch (e) {
+          if (e && e.name === "AbortError") return;
+          prompt("Copy this link:", link);
+        }
+      }));
+      row.append(btn("Delete", "danger", () => {
+        if (!confirm(`Delete the preset "${sel.name}"?`)) return;
+        presets = presets.filter((p) => p !== sel);
+        selectedPreset = presets.length ? presets[0].name : "";
+        savePresets();
+        renderSettings();
+      }));
+    }
+    card.append(row);
+    return card;
+  }
+
   function renderLogicSettings() {
     const S = window.OOTLogic && window.OOTLogic.SETTINGS;
     const card = h("div", { class: "card" }, h("h2", null, "Logic"));
@@ -906,7 +1086,8 @@
 
     card.append(h("p", { class: "hint" }, state.spoiler
       ? "These were read from your spoiler log. Change them only if something looks off."
-      : "Set these to match your seed (or load its spoiler log to fill them in)."));
+      : "Set these to match your seed (or load its spoiler log to fill them in)."),
+      h("p", { class: "hint" }, "The tracker uses glitchless logic. Glitched logic isn't supported yet."));
     const rows = h("div", { class: "toggles" });
     for (const v of LOGIC_SETTING_ROWS) {
       rows.append(selectRow(v));
@@ -979,6 +1160,8 @@
   document.querySelectorAll(".tabbar button").forEach((b) => b.addEventListener("click", () => showView(b.dataset.view)));
 
   renderAll();
+  importPresetFromUrl();
+  window.addEventListener("hashchange", importPresetFromUrl);
 
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
     navigator.serviceWorker.register("sw.js").catch(() => {});

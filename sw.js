@@ -1,6 +1,6 @@
 // Offline support: cache the app shell so the tracker works without signal.
 // Bump CACHE when shipping changes so phones pick up the new files.
-const CACHE = "oot3d-tracker-v2";
+const CACHE = "oot3d-tracker-v3";
 const ASSETS = [
   "./",
   "index.html",

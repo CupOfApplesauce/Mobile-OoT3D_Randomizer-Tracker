@@ -277,6 +277,10 @@ details.card[open] > summary { margin-bottom: 10px; }
   background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
   padding: 7px 8px; font-size: 15px; max-width: 55%;
 }
+.select.wide { max-width: none; width: 100%; margin-bottom: 8px; }
+.preset-status { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+.preset-status.ok { color: var(--good); }
+.empty.small { padding: 4px 0 12px; text-align: left; font-size: 14px; }
 details.sub { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
 details.sub > summary { cursor: pointer; font-weight: 600; font-size: 14px; color: var(--muted); padding: 4px 0; }
 .about p { color: var(--muted); font-size: 13px; }

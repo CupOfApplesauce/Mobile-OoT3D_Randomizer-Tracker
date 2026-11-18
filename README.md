@@ -15,6 +15,7 @@ The tracker is an installable web app (PWA). You open it in your phone's browser
   - can add items to your inventory automatically when you check a location
   - offers "where is…" search, Way of the Hero, Gossip Stone hints, the playthrough and the seed's settings
 - **Logic**: every check shows whether it's reachable with the items you've marked, using the randomizer's own logic (see below). Areas show a green count of checks available right now, and the **In logic** filter shows only those. Loading a spoiler log sets the world settings, tricks, Master Quest dungeons, Ganon's trials and starting items. Without a log, you can set them by hand under Settings → Logic.
+- **Presets**: save your seed settings (logic settings, tricks, location types) under a name and load them later. **New run with this preset** clears items and checks but keeps the settings. **Share link** copies a preset to another device or a friend.
 - Progress is saved on the device. You can export and import it as JSON.
 
 ## How the logic works
